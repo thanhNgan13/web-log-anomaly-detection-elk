@@ -61,18 +61,16 @@ graph LR
 
 ### 3.2. Cấu trúc thư mục dự án
 
-```
-project_clean/
-├── docker-compose.yml     # Cấu hình Docker cho ELK Stack
-├── logstash.conf          # Cấu hình pipeline Logstash (tùy chọn)
-├── requirements.txt       # Danh sách thư viện Python
-├── ingest_data.py         # Script nạp dữ liệu vào Elasticsearch
-├── train_model.py         # Script huấn luyện mô hình AI
-├── detect_anomalies.py    # Script phát hiện bất thường và index kết quả
-├── data/
-│   └── sample_logs.csv    # Dữ liệu mẫu
-└── model.pkl              # File mô hình đã huấn luyện (sinh ra sau khi chạy)
-```
+| Tên File/Thư mục       | Mô tả                                                                                              |
+| :--------------------- | :------------------------------------------------------------------------------------------------- |
+| `docker-compose.yml`   | File cấu hình Docker Compose để khởi chạy các dịch vụ ELK Stack (Elasticsearch, Kibana, Logstash). |
+| `logstash.conf`        | File cấu hình pipeline cho Logstash (tùy chọn, dùng nếu chạy qua Logstash).                        |
+| `requirements.txt`     | Danh sách các thư viện Python cần thiết cho dự án.                                                 |
+| `ingest_data.py`       | Script Python để đọc dữ liệu từ CSV và nạp vào Elasticsearch.                                      |
+| `train_model.py`       | Script Python để huấn luyện mô hình Isolation Forest và lưu model.                                 |
+| `detect_anomalies.py`  | Script Python để phát hiện bất thường từ dữ liệu mới và index kết quả vào Elasticsearch.           |
+| `data/sample_logs.csv` | Thư mục chứa dữ liệu log mẫu định dạng CSV để test hệ thống.                                       |
+| `model.pkl`            | File binary chứa mô hình đã huấn luyện (được sinh ra sau khi chạy `train_model.py`).               |
 
 ---
 
@@ -326,15 +324,40 @@ Hệ thống đã phân tích thành công các dòng log và gán nhãn.
 
 ### 7.2. Trực quan hóa trên Kibana
 
-Đã thiết lập **Data View** `web-logs-anomalies-view` trên Kibana để theo dõi kết quả.
+Để xem kết quả phân tích, chúng ta thực hiện các bước thiết lập sau trên Kibana:
 
-**(Vui lòng chèn hình ảnh chụp màn hình Kibana Discover tại đây)**
+#### Bước 1: Tạo Data View
 
-> **[CHÈN HÌNH ẢNH KIBANA DISCOVER HIỂN THỊ ANOMALY_LABEL TẠI ĐÂY]** > _Hình 1: Giao diện Discover hiển thị các log được gán nhãn bất thường (anomaly_label: -1)_
+1.  Mở trình duyệt và truy cập Kibana tại địa chỉ: `http://localhost:5601`.
+2.  Truy cập vào **Stack Management** > **Data Views**.
+3.  Nhấn **Create data view**.
+4.  Nhập tên: `web-logs-anomalies-view`.
+5.  Nhập Index pattern: `web-logs-anomalies`.
+6.  Chọn Timestamp field: `@timestamp`.
 
-**(Vui lòng chèn hình ảnh biểu đồ nếu có)**
+> **[CHÈN HÌNH ẢNH: MÀN HÌNH TẠO DATA VIEW THÀNH CÔNG]**
 
-> **[CHÈN HÌNH ẢNH KIBANA DASHBOARD/CHART TẠI ĐÂY]** > _Hình 2: Biểu đồ phân bố các request bất thường theo thời gian_
+#### Bước 2: Xem dữ liệu trên Discover
+
+1.  Truy cập menu **Discover**.
+2.  Chọn Data View `web-logs-anomalies-view` vừa tạo.
+3.  Thêm các cột hiển thị: `anomaly_score`, `anomaly_label`, `src_ip`, `status`.
+
+> **[CHÈN HÌNH ẢNH: MÀN HÌNH DISCOVER VỚI CÁC CỘT DỮ LIỆU]**
+
+#### Bước 3: Lọc và phân tích bất thường
+
+1.  Trên thanh tìm kiếm, nhập bộ lọc: `anomaly_label : -1`.
+2.  Kết quả sẽ chỉ hiển thị các dòng log bị đánh dấu là bất thường.
+
+> **[CHÈN HÌNH ẢNH: KẾT QUẢ LỌC ANOMALY_LABEL = -1]** > _Hình 1: Giao diện Discover hiển thị các log được gán nhãn bất thường_
+
+#### Bước 4: Biểu đồ phân bố (Dashboard)
+
+1.  Tạo biểu đồ cột (Bar chart) thống kê số lượng log bình thường (1) và bất thường (-1).
+2.  Trực quan hóa xu hướng xuất hiện bất thường theo thời gian.
+
+> **[CHÈN HÌNH ẢNH: BIỂU ĐỒ DASHBOARD]** > _Hình 2: Biểu đồ phân bố các request bất thường theo thời gian_
 
 ---
 

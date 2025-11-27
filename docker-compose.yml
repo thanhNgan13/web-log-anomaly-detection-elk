@@ -1,4 +1,4 @@
-version: "3.7"
+# version: "3.7"
 
 # Docker‑compose file to spin up the ELK stack.  This project uses a single‑node
 # Elasticsearch instance, a Kibana instance and a Logstash instance.  Logstash
