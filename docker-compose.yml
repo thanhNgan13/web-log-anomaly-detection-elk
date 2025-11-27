@@ -1,0 +1,46 @@
+version: '3.7'
+
+# Docker‑compose file to spin up the ELK stack.  This project uses a single‑node
+# Elasticsearch instance, a Kibana instance and a Logstash instance.  Logstash
+# reads data from the `data` folder and ingests it into Elasticsearch.  The
+# versions of the containers can be adjusted but must be compatible (8.x in
+# this example).
+
+services:
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.5.3
+    environment:
+      - discovery.type=single-node
+      # Limit JVM heap to avoid using all host memory.  Adjust values based on
+      # your machine’s resources.
+      - ES_JAVA_OPTS=-Xms1g -Xmx1g
+    ports:
+      - "9200:9200"
+    volumes:
+      - esdata:/usr/share/elasticsearch/data
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.5.3
+    depends_on:
+      - elasticsearch
+    ports:
+      - "5601:5601"
+
+  logstash:
+    image: docker.elastic.co/logstash/logstash:8.5.3
+    depends_on:
+      - elasticsearch
+    volumes:
+      # Mount the Logstash pipeline configuration
+      - ./logstash.conf:/usr/share/logstash/pipeline/logstash.conf
+      # Mount the `data` folder so Logstash can read the CSV file
+      - ./data:/usr/share/logstash/pipeline/data
+    ports:
+      # Expose default Logstash ports.  Port 5044 is used by Beats; 5000 can
+      # be used for TCP input if needed.
+      - "5044:5044"
+      - "5000:5000"
+
+volumes:
+  esdata:
+    driver: local
