@@ -1,4 +1,4 @@
-version: '3.7'
+version: "3.7"
 
 # Docker‑compose file to spin up the ELK stack.  This project uses a single‑node
 # Elasticsearch instance, a Kibana instance and a Logstash instance.  Logstash
@@ -14,6 +14,7 @@ services:
       # Limit JVM heap to avoid using all host memory.  Adjust values based on
       # your machine’s resources.
       - ES_JAVA_OPTS=-Xms1g -Xmx1g
+      - xpack.security.enabled=false # thêm dòng này để tắt security
     ports:
       - "9200:9200"
     volumes:
