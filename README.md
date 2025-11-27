@@ -83,18 +83,26 @@ Bạn có thể chỉ định mức độ nhiễm bẩn (contamination) với th
 Sau khi có mô hình, sử dụng script `detect_anomalies.py` để tính điểm bất thường cho từng dòng log. Script sẽ sinh file `anomaly_scores.csv` bao gồm cột `anomaly_score` và nhãn (`anomaly_label`: -1 = bất thường, 1 = bình thường):
 
 ```bash
-python detect_anomalies.py --file data/sample_logs.csv --model-file model.pkl --output anomaly_scores.csv
+python detect_anomalies.py --file data/sample_logs.csv --model-file model.pkl --output anomaly_scores.csv --index-results
 ```
+
+Tham số `--index-results` sẽ tự động đẩy kết quả (bao gồm nhãn và điểm bất thường) lên index `web-logs-anomalies` trong Elasticsearch.
 
 Bạn có thể dùng file này để cập nhật lại index trong Elasticsearch (ví dụ qua Bulk API) hoặc trực quan hoá kết quả bằng Pandas.
 
 ### 6. Trực quan hóa và tạo cảnh báo trong Kibana
 
 1. Mở `http://localhost:5601` trong trình duyệt.
-2. Vào **Stack Management → Kibana → Data Views** và tạo Data View với tên `web-logs*` chọn trường thời gian là `@timestamp`.
-3. Vào **Discover** để xem dữ liệu log đã được index và thực hiện truy vấn.
-4. (Tuỳ chọn) Thiết lập **Machine Learning → Anomaly Detection** để tạo job phát hiện bất thường ngay trong Kibana theo hướng dẫn của Elastic【147792481961476†L73-L90】.
-5. Tạo dashboard hiển thị số request, status code, và biểu đồ `anomaly_score`. Bạn có thể sử dụng tính năng Alerting của Kibana để gửi thông báo khi có bất thường.
+2. Vào **Stack Management → Kibana → Data Views**.
+3. Tạo Data View cho log gốc:
+   - Name: `web-logs-views`
+   - Index pattern: `web-logs*`
+   - Timestamp field: `@timestamp`
+4. Tạo Data View cho kết quả bất thường:
+   - Name: `web-logs-anomalies-view`
+   - Index pattern: `web-logs-anomalies`
+   - Timestamp field: `@timestamp`
+5. Vào **Discover**, chọn Data View `web-logs-anomalies-view` để xem các log được gán nhãn. Những dòng có `anomaly_label` là `-1` là bất thường.
 
 ## Nội dung các file Python
 
@@ -188,12 +196,14 @@ if __name__ == '__main__':
 """
 Tính điểm bất thường và nhãn dựa trên mô hình Isolation Forest đã huấn luyện.
 Output: file CSV chứa anomaly_score và anomaly_label.
+Có thể index kết quả trực tiếp vào Elasticsearch.
 """
 import argparse
 import pandas as pd
 import joblib
+from elasticsearch import Elasticsearch, helpers
 
-def detect(file_path: str, model_path: str, output_path: str):
+def detect(file_path: str, model_path: str, output_path: str, index_results: bool, es_index: str, es_host: str):
     model_data = joblib.load(model_path)
     clf = model_data['model']
     scaler = model_data['scaler']
@@ -201,19 +211,52 @@ def detect(file_path: str, model_path: str, output_path: str):
     X = scaler.transform(df[['status', 'response_time', 'bytes']].fillna(0))
     scores = clf.decision_function(X)
     labels = clf.predict(X)
-    result_df = df.copy()
-    result_df['anomaly_score'] = scores
-    result_df['anomaly_label'] = labels
-    result_df.to_csv(output_path, index=False)
+    df['anomaly_score'] = scores
+    df['anomaly_label'] = labels
+    df.to_csv(output_path, index=False)
     print(f"Saved anomaly scores to {output_path}")
+
+    if index_results:
+        print(f"Indexing results to Elasticsearch index '{es_index}'...")
+        es = Elasticsearch(es_host)
+        # Create index with mapping if it doesn't exist
+        if not es.indices.exists(index=es_index):
+            mapping = {
+                "mappings": {
+                    "properties": {
+                        "timestamp": {"type": "date", "format": "yyyy-MM-dd HH:mm:ss"},
+                        "src_ip": {"type": "ip"},
+                        "dst_ip": {"type": "ip"},
+                        "anomaly_score": {"type": "float"},
+                        "anomaly_label": {"type": "integer"},
+                        "status": {"type": "integer"},
+                        "response_time": {"type": "float"},
+                        "bytes": {"type": "long"}
+                    }
+                }
+            }
+            es.indices.create(index=es_index, body=mapping)
+
+        actions = []
+        for _, row in df.iterrows():
+            doc = row.to_dict()
+            action = {'_index': es_index, '_source': doc}
+            actions.append(action)
+
+        if actions:
+            helpers.bulk(es, actions)
+            print(f"Indexed {len(actions)} documents into '{es_index}'")
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Detect anomalies using a trained model')
     parser.add_argument('--file', required=True, help='Path to CSV file')
     parser.add_argument('--model-file', required=True, help='Path to trained model (joblib file)')
     parser.add_argument('--output', default='anomaly_scores.csv', help='Output CSV file path')
+    parser.add_argument('--index-results', action='store_true', help='Index results to Elasticsearch')
+    parser.add_argument('--es-index', default='web-logs-anomalies', help='Elasticsearch index name for results')
+    parser.add_argument('--es-host', default='http://localhost:9200', help='Elasticsearch host URL')
     args = parser.parse_args()
-    detect(args.file, args.model_file, args.output)
+    detect(args.file, args.model_file, args.output, args.index_results, args.es_index, args.es_host)
 ```
 
 ## Ghi chú

@@ -1,4 +1,4 @@
 pandas
 scikit-learn
-elasticsearch
+elasticsearch<9
 joblib
